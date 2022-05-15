@@ -42,17 +42,27 @@ public class EthernetLayer extends BaseLayer {
      */
     /* If the type is 0xff, the frame needs to be broadcasted */
     public boolean send(byte[] dataArray, int arrayLength) {
-        if (dataArray == null && arrayLength == 0) // ACK (0x02)
-            header.type = integerToByte2(0x02);
-        else if (isBroadcast(header.dst.addr)) // Broadcast (0xff)
-            header.type = integerToByte2(0xff);
+        if (dataArray == null && arrayLength == 0) 
+            header.type = integerToByte2(0x2081); // Chat && ACK
         else
-            header.type = integerToByte2(0x01); // Normal
+            header.type = integerToByte2(0x2080); // Chat && Normal
 
         byte[] bytes = this.objectToByte(header, dataArray, arrayLength);
         this.getUnderLayer().send(bytes, bytes.length);
 
         return true;
+    }
+    
+    public boolean fileSend(byte[] dataArray, int arrayLength) {
+    	if (dataArray == null && arrayLength == 0) 
+    		header.type = integerToByte2(0x2091); // File && ACK
+    	else 
+    		header.type = integerToByte2(0x2090); // File && Normal
+    	
+    	byte[] bytes = this.objectToByte(header, dataArray, arrayLength);
+        this.getUnderLayer().send(bytes, bytes.length);
+        
+    	return true;
     }
 
     /**
