@@ -1,29 +1,47 @@
 import java.util.ArrayList;
 
-public class BaseLayer implements LayerInterface {
+public abstract class BaseLayer implements LayerInterface {
 
     private final ArrayList<LayerInterface> upperLayerList = new ArrayList<>();
+    private final String layerName;
 
     private LayerInterface underLayer = null;
-    private String layerName;
 
-    public BaseLayer(String name) {
-        this.layerName = name;
+    public BaseLayer(String layerName) {
+        this.layerName = layerName;
+    }
+
+    public void print(String str) {
+        System.out.printf("[%s] %s\n", layerName, str);
+    }
+
+    public void printError(String errStr) {
+        System.err.printf("[%s] %s\n", layerName, errStr);
+    }
+
+    public void printHex(byte[] dataArray, int dataLength) {
+        StringBuilder stringBuilder = new StringBuilder(String.format("[%s]", layerName));
+        for (int index = 0; index < dataLength; index++) {
+            stringBuilder.append(String.format(" %02X", dataArray[index]));
+            if ((index + 1) % 8 == 0 && (index + 1) < dataLength)
+                stringBuilder.append(String.format("\n[%s]", layerName));
+        }
+        System.out.println(stringBuilder);
     }
 
     @Override
     public String getLayerName() {
-        return this.layerName;
+        return layerName;
     }
 
     @Override
     public LayerInterface getUnderLayer() {
-        return this.underLayer;
+        return underLayer;
     }
 
     @Override
-    public void setUnderLayer(LayerInterface newUnderLayer) {
-        this.underLayer = newUnderLayer;
+    public void setUnderLayer(LayerInterface underLayer) {
+        this.underLayer = underLayer;
     }
 
     @Override
@@ -35,52 +53,52 @@ public class BaseLayer implements LayerInterface {
     @Override
     public LayerInterface getUpperLayer(String layerName) {
         if (layerName == null || upperLayerList.isEmpty()) return null;
-        for (LayerInterface layer : upperLayerList) {
-            if (layer.getLayerName().equals(layerName)) return layer;
-        }
+        for (LayerInterface upperLayer : upperLayerList)
+            if (upperLayer.getLayerName().equals(layerName))
+                return upperLayer;
         return null;
     }
 
     @Override
-    public void setUpperLayer(LayerInterface newUpperLayer) {
-        if (newUpperLayer == null) return;
-        this.upperLayerList.add(upperLayerList.size(), newUpperLayer);
+    public void setUpperLayer(LayerInterface upperLayer) {
+        if (upperLayer == null) return;
+        upperLayerList.add(upperLayer);
     }
 
     @Override
     public void setUnderUpperLayer(LayerInterface underUpperLayer) {
-        this.setUnderLayer(underUpperLayer);
+        setUnderLayer(underUpperLayer);
         underUpperLayer.setUpperLayer(this);
     }
 
     @Override
     public void setUpperUnderLayer(LayerInterface upperUnderLayer) {
-        this.setUpperLayer(upperUnderLayer);
+        setUpperLayer(upperUnderLayer);
         upperUnderLayer.setUnderLayer(this);
     }
 
     @Override
-    public boolean send(byte[] dataArray, int arrayLength) {
-        return send(dataArray, arrayLength, null);
+    public boolean send(byte[] dataArray, int dataLength) {
+        return send(dataArray, dataLength, null);
     }
 
     @Override
-    public boolean send(byte[] dataArray, int arrayLength, String layerName) {
-        return false;
-    }
-
-    @Override
-    public boolean send(String fileName) {
-        return false;
-    }
-
-    @Override
-    public boolean receive(byte[] dataArray) {
+    public boolean send(byte[] dataArray, int dataLength, String layerName) {
         return false;
     }
 
     @Override
     public boolean receive() {
+        return false;
+    }
+
+    @Override
+    public boolean receive(byte[] dataArray) {
+        return receive(dataArray, null);
+    }
+
+    @Override
+    public boolean receive(byte[] dataArray, String layerName) {
         return false;
     }
 }

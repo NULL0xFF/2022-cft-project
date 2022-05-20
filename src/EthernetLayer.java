@@ -1,234 +1,197 @@
 public class EthernetLayer extends BaseLayer {
 
+    private static final int MTU = 1500;
+
     private EthernetHeader header;
 
-    public EthernetLayer(String name) {
-        super(name);
+    public EthernetLayer(String layerName) {
+        super(layerName);
         resetHeader();
-    }
-
-    private static void print(String str) {
-        System.out.println("[EthernetLayer] " + str);
-    }
-
-    private static void printError(String errStr) {
-        System.err.println("[EthernetLayer] " + errStr);
     }
 
     private void resetHeader() {
         header = new EthernetHeader();
     }
 
-    private byte[] createFrame(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer = new byte[arrayLength + 14]; // 14-bytes-long Ethernet header
-        for (int index = 0; index < 6; index++) {
-            byteBuffer[index] = header.dst.addr[index];
-            byteBuffer[index + 6] = header.src.addr[index];
-        }
-        byteBuffer[12] = header.type[0];
-        byteBuffer[13] = header.type[1];
-
-        System.arraycopy(dataArray, 0, byteBuffer, 14, arrayLength);
-        return byteBuffer;
+    private byte[] createFrame(byte[] dataArray, int dataLength) {
+        byte[] frame = (dataLength + 40 < 46) ? new byte[60] : new byte[dataLength + 54]; // Minimum Packet Size w/ IP & TCP Header
+        System.arraycopy(header.dst.addr, 0, frame, 0, 6);
+        System.arraycopy(header.src.addr, 0, frame, 6, 6);
+        System.arraycopy(header.type, 0, frame, 12, 2);
+        if (dataArray != null)
+            System.arraycopy(dataArray, 0, frame, 54, dataLength); // Skip IP & TCP Header
+        return frame;
     }
 
-    private byte[] removeHeader(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer = new byte[arrayLength - 14]; // 14-bytes-long Ethernet Frame
-        System.arraycopy(dataArray, 14, byteBuffer, 0, arrayLength - 14);
-        return byteBuffer;
+    private byte[] removeHeader(byte[] frame, int frameLength) {
+        print("remove header : " + String.format("%s, %d", frame.toString(), frameLength));
+        printHex(frame, frameLength);
+
+        byte[] dataArray = new byte[frameLength - 54]; // Remove Ethernet & IP & TCP Header
+        System.arraycopy(frame, 54, dataArray, 0, frameLength - 54);
+
+        print("return " + dataArray.toString());
+        printHex(dataArray, dataArray.length);
+
+        return dataArray;
     }
 
     private byte[] integerToByte2(int value) {
+        print("integer to byte[2] : " + String.format("0x%08X", value));
+
         byte[] byteBuffer = new byte[2];
         byteBuffer[0] |= (byte) ((value & 0xFF00) >> 8);
         byteBuffer[1] |= (byte) (value & 0xFF);
+
+        print("return " + String.format("0x%02X%02X", byteBuffer[0], byteBuffer[1]));
 
         return byteBuffer;
     }
 
     private int byte2ToInteger(byte value1, byte value2) {
-        print("byte[2] to integer -> " + String.format("value1 : 0x%02X, value2 : 0x%02X", value1, value2));
-        int v1 = value1 & 0xFF;
-        int v2 = value2 & 0xFF;
-        return v1 << 8 | v2;
+        print("byte[2] to integer : " + String.format("0x%02X%02X", value1, value2));
+        print("return " + String.format("0x%08X", ((value1 & 0xFF) << 8) | (value2 & 0xFF)));
+        return ((value1 & 0xFF) << 8) | (value2 & 0xFF);
     }
 
-    public void setSourceAddress(byte[] newSrcAddr) {
-        header.src.addr = newSrcAddr;
+    public void setDestinationAddress(byte[] destinationAddress) {
+        header.dst.addr = destinationAddress;
     }
 
-    public void setDestinationAddress(byte[] newDstAddress) {
-        header.dst.addr = newDstAddress;
+    public void setSourceAddress(byte[] sourceAddress) {
+        header.src.addr = sourceAddress;
     }
 
+    private boolean isBroadcast(byte[] frame) {
+        for (int index = 0; index < 6; index++)
+            if (frame[index] != (byte) 0xFF) return false;
+        return (frame[12] == (byte) 0xFF && frame[13] == (byte) 0xFF);
+    }
 
-    @Override
-    public boolean send(byte[] dataArray, int arrayLength, String layerName) {
-        print("layer name : " + layerName);
-        if (layerName == null) {
-            print("layer name is null");
-            if (dataArray == null && arrayLength == 0)
-                // Default ACK
-                header.type = integerToByte2(0x2001);
-            else
-                // Default
-                header.type = integerToByte2(0x2000);
-        } else switch (layerName) {
-            case "ChatApp":
-                print("layer is ChatApp");
-                if (dataArray == null && arrayLength == 0)
-                    // ChatApp ACK
-                    header.type = integerToByte2(0x2081);
-                else
-                    // ChatApp
-                    header.type = integerToByte2(0x2080);
-                break;
-            case "FileApp":
-                print("layer is FileApp");
-                if (dataArray == null && arrayLength == 0)
-                    // FileApp ACK
-                    header.type = integerToByte2(0x2091);
-                else
-                    // FileApp
-                    header.type = integerToByte2(0x2090);
-                break;
-            default:
-                throw new RuntimeException("unsupported layer " + layerName);
-        }
-
-        print("creating frame");
-        byte[] byteFrame = createFrame(dataArray, arrayLength);
-        getUnderLayer().send(byteFrame, byteFrame.length);
-        print("type " + String.format("0x%02X%02X", header.type[0], header.type[1]) + " sent");
-
+    private boolean isMine(byte[] frame) {
+        for (int index = 0; index < 6; index++)
+            if (header.src.addr[index] != frame[index]) return false;
         return true;
     }
 
     @Override
-    public synchronized boolean receive(byte[] dataArray) {
-        byte[] data;
-        int dataType = byte2ToInteger(dataArray[12], dataArray[13]);
-        print("data with type " + String.format("0x%04X", dataType) + " received");
+    public boolean send(byte[] dataArray, int dataLength, String layerName) {
+        print("send : " + String.format("%s, %d, %s", dataArray == null ? "null" : dataArray.toString(), dataLength, layerName));
+        if (dataArray != null) printHex(dataArray, dataLength);
 
-        if (/* !this.isMyPacket(dataArray) && */ !this.isBroadcast(dataArray) && this.isMine(dataArray)) {
-            data = removeHeader(dataArray, dataArray.length);
+        if (layerName == null) {
+            printError("layer name is null");
+            return false;
+        } else switch (layerName) {
+            case "ChatApp":
+                if (dataArray == null && dataLength == 0) {
+                    // ChatApp ACK
+                    print("sending ChatApp ACK");
+                    header.type = integerToByte2(0x2081);
+                } else {
+                    // ChatApp Data
+                    print("sending ChatApp Data");
+                    header.type = integerToByte2(0x2080);
+                }
+                break;
+            case "FileApp":
+                if (dataArray == null && dataLength == 0) {
+                    // FileApp ACK
+                    print("sending FileApp ACK");
+                    header.type = integerToByte2(0x2091);
+                } else {
+                    // FileApp Data
+                    print("sending FileApp Data");
+                    header.type = integerToByte2(0x2090);
+                }
+                break;
+            default:
+                printError("undefined layer " + layerName);
+                return false;
+        }
+
+        byte[] frame = createFrame(dataArray, dataLength);
+
+        print("send frame to under layer");
+        printHex(frame, frame.length);
+
+        getUnderLayer().send(frame, frame.length);
+        return true;
+    }
+
+    @Override
+    public synchronized boolean receive(byte[] frame) {
+        print("receive : " + frame.toString());
+        printHex(frame, frame.length);
+
+        byte[] dataArray;
+        int dataType = byte2ToInteger(frame[12], frame[13]);
+
+        if (!isBroadcast(frame) && isMine(frame)) {
+            dataArray = removeHeader(frame, frame.length);
             switch (dataType) {
-                case 0x2000:
-                    // Default
-                    break;
-                case 0x2001:
-                    // Default ACK
-                    break;
                 case 0x2080:
-                    // ChatApp
-                    print("ChatApp normal data");
-                    getUpperLayer("ChatApp").receive(data);
-//                    send(null, 0, "ChatApp"); // ACK
+                    // ChatApp Data
+                    print("received ChatApp Data");
+                    printHex(frame, frame.length);
+
+                    getUpperLayer("ChatApp").receive(dataArray);
                     break;
                 case 0x2081:
                     // ChatApp ACK
-                    print("ChatApp ACK");
+                    print("received ChatApp ACK");
+                    printHex(frame, frame.length);
+
                     getUpperLayer("ChatApp").receive(null);
-//                    send(null, 0, "ChatApp"); // ACK
                     break;
                 case 0x2090:
-                    // FileApp
-                    getUpperLayer("FileApp").receive(data);
-                    send(null, 0, "FileApp"); // ACK
+                    // FileApp Data
+                    print("received FileApp Data");
+                    printHex(frame, frame.length);
+
+                    getUpperLayer("FileApp").receive(dataArray);
                     break;
                 case 0x2091:
                     // FileApp ACK
+                    print("received FileApp ACK");
+                    printHex(frame, frame.length);
+
                     getUpperLayer("FileApp").receive(null);
-                    send(null, 0, "FileApp"); // ACK
                     break;
                 default:
-                    printError(String.format("unsupported type 0x%04X", dataType));
+                    printError("undefined type");
+                    return false;
             }
             return true;
         }
         return false;
     }
 
-    /**
-     * Check if the Ethernet Frame is Broadcast Frame
-     */
-    private boolean isBroadcast(byte[] dataArray) {
-        for (int i = 0; i < 6; i++)
-            if (dataArray[i] != (byte) 0xff) return false;
-        return (dataArray[12] == (byte) 0xff && dataArray[13] == (byte) 0xff);
-    }
-
-    /**
-     * Check if the Ethernet Frame is My Packet
-     */
-    private boolean isMyPacket(byte[] dataArray) {
-        for (int i = 0; i < 6; i++)
-            if (header.src.addr[i] != dataArray[6 + i]) return false;
-        return true;
-    }
-
-    /**
-     * Check if the Ethernet Frame is for me
-     */
-    private boolean isMine(byte[] dataArray) {
-        byte[] byteBuffer = header.src.addr;
-        for (int i = 0; i < 6; i++)
-            if (byteBuffer[i] != dataArray[i]) return false;
-        return true;
-    }
-
-    /**
-     * Ethernet Frame Sub-Class
-     */
     private static class EthernetHeader {
-        /**
-         * Destination MAC Address
-         */
+
         EthernetAddress dst;
-        /**
-         * Source MAC Address
-         */
         EthernetAddress src;
-        /**
-         * Ethernet Frame Type
-         */
-        byte[] type; // Type
-        /**
-         * Ethernet Frame Data
-         */
-        @SuppressWarnings("unused")
+        byte[] type;
         byte[] data;
 
-        /**
-         * Ethernet Frame Sub-Class Constructor
-         */
         public EthernetHeader() {
-            this.dst = new EthernetAddress();
-            this.src = new EthernetAddress();
-            this.type = new byte[2];
-            this.data = null;
+            dst = new EthernetAddress();
+            src = new EthernetAddress();
+            type = new byte[2];
+            data = null;
         }
 
-        /**
-         * Ethernet Address Sub-Class
-         */
         private static class EthernetAddress {
-            /**
-             * Ethernet MAC Address
-             */
+
             byte[] addr = new byte[6];
 
-            /**
-             * Ethernet Address Sub-Class Constructor
-             */
             public EthernetAddress() {
-                this.addr[0] = (byte) 0x00;
-                this.addr[1] = (byte) 0x00;
-                this.addr[2] = (byte) 0x00;
-                this.addr[3] = (byte) 0x00;
-                this.addr[4] = (byte) 0x00;
-                this.addr[5] = (byte) 0x00;
+                for (int index = 0; index < 6; index++)
+                    addr[index] = (byte) 0x00;
             }
+
         }
+
     }
+
 }

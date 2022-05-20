@@ -2,15 +2,15 @@ import java.util.ArrayList;
 
 public class ChatAppLayer extends BaseLayer {
 
-    private static final int MAXIMUM_DATA_LENGTH = 1456;
+    private static final int MTU = 1456;
 
     private final ArrayList<Boolean> ackCheckList = new ArrayList<>();
+    private int fragCount = 0;
     private ChatAppHeader header;
     private byte[] fragBytes;
-    private int fragCount = 0;
 
-    public ChatAppLayer(String name) {
-        super(name);
+    public ChatAppLayer(String layerName) {
+        super(layerName);
         resetHeader();
         ackCheckList.add(true);
     }
@@ -19,40 +19,52 @@ public class ChatAppLayer extends BaseLayer {
         header = new ChatAppHeader();
     }
 
-    private byte[] createFrame(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer = new byte[arrayLength + 4]; // 4-bytes-long Ethernet header
+    private byte[] createFrame(byte[] dataArray, int dataLength) {
+        byte[] frame = new byte[dataLength + 4];
+        System.arraycopy(header.totalLength, 0, frame, 0, 2);
+        frame[2] = header.type;
+        frame[3] = header.unused;
 
-        byteBuffer[0] = header.totalLength[0];
-        byteBuffer[1] = header.totalLength[1];
-        byteBuffer[2] = header.type;
-        byteBuffer[3] = header.unused;
+        // Not ACK Frame
+        if (dataArray != null && dataLength > 0) System.arraycopy(dataArray, 0, frame, 4, dataLength);
 
-        // Not ACK
-        if (arrayLength >= 0) System.arraycopy(dataArray, 0, byteBuffer, 4, arrayLength);
-
-        return byteBuffer;
+        return frame;
     }
 
-    private byte[] removeHeader(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer = new byte[arrayLength - 4];
-        System.arraycopy(dataArray, 4, byteBuffer, 0, arrayLength - 4);
-        return byteBuffer;
+    private byte[] removeHeader(byte[] frame, int frameLength) {
+        print("remove header : " + String.format("%s, %d", frame.toString(), frameLength));
+        printHex(frame, frameLength);
+
+        byte[] dataArray = new byte[frameLength - 4]; // Remove ChatApp Header
+        System.arraycopy(frame, 4, dataArray, 0, frameLength - 4);
+
+        print("return " + dataArray.toString());
+        printHex(dataArray, dataArray.length);
+
+        return dataArray;
     }
 
     private byte[] integerToByte2(int value) {
+        print("integer to byte[2] : " + String.format("0x%08X", value));
+
         byte[] byteBuffer = new byte[2];
         byteBuffer[0] |= (byte) ((value & 0xFF00) >> 8);
         byteBuffer[1] |= (byte) (value & 0xFF);
+
+        print("return " + String.format("0x%02X%02X", byteBuffer[0], byteBuffer[1]));
 
         return byteBuffer;
     }
 
     private int byte2ToInteger(byte value1, byte value2) {
-        return (value1 << 8) | (value2);
+        print("byte[2] to integer : " + String.format("0x%02X%02X", value1, value2));
+        print("return " + String.format("0x%08X", ((value1 & 0xFF) << 8) | (value2 & 0xFF)));
+        return ((value1 & 0xFF) << 8) | (value2 & 0xFF);
     }
 
     /* Polling */
     private void waitACK() { // ACK Check
+        // TODO Change Polling to Event-driven
         while (ackCheckList.size() <= 0) {
             try {
                 Thread.sleep(10);
@@ -63,115 +75,124 @@ public class ChatAppLayer extends BaseLayer {
         ackCheckList.remove(0);
     }
 
-    private void fragmentedSend(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer = new byte[MAXIMUM_DATA_LENGTH];
+    private void fragmentedSend(byte[] dataArray, int dataLength) {
+        byte[] frame = new byte[MTU];
 
-        header.totalLength = integerToByte2(arrayLength);
+        // First Send
+        header.totalLength = integerToByte2(dataLength);
         header.type = (byte) (0x01);
+        System.arraycopy(dataArray, 0, frame, 0, MTU);
+        frame = createFrame(frame, MTU);
+        getUnderLayer().send(frame, frame.length, getLayerName());
 
-        // First Send (type 0x01)
-        System.arraycopy(dataArray, 0, byteBuffer, 0, MAXIMUM_DATA_LENGTH);
-        byteBuffer = createFrame(byteBuffer, MAXIMUM_DATA_LENGTH);
-        this.getUnderLayer().send(byteBuffer, byteBuffer.length, getLayerName());
+        int maxLength = dataLength / MTU;
 
-        int maxLength = arrayLength / MAXIMUM_DATA_LENGTH;
-
-        // Second Send (type 0x02)
-        header.totalLength = integerToByte2(MAXIMUM_DATA_LENGTH); // Every maximum data bytes
-        header.type = (byte) (0x02); // Type 0x02
+        // Next Send
+        header.totalLength = integerToByte2(MTU);
+        header.type = (byte) (0x02);
         for (int index = 1; index < maxLength; index++) {
-            this.waitACK(); // Wait for previous send ACK
-            // Check if this iteration is final iteration
-            if ((index + 1 == maxLength) && (arrayLength % MAXIMUM_DATA_LENGTH == 0))
-                header.type = (byte) (0x03); // This iteration is final so set type to 0x03
-            System.arraycopy(dataArray, MAXIMUM_DATA_LENGTH * index, byteBuffer, 0, MAXIMUM_DATA_LENGTH);
-            byteBuffer = createFrame(byteBuffer, MAXIMUM_DATA_LENGTH);
-            this.getUnderLayer().send(byteBuffer, byteBuffer.length, getLayerName());
+            this.waitACK(); // Wait for Previous Send
+            if ((index + 1 == maxLength) && (dataLength % MTU == 0))
+                header.type = (byte) (0x03);
+            System.arraycopy(dataArray, MTU * index, frame, 0, MTU);
+            frame = createFrame(frame, MTU);
+            getUnderLayer().send(frame, frame.length, getLayerName());
         }
 
-        // Final Send (type 0x03)
+        // Last Send
         header.type = (byte) (0x03);
-        // Leftover data which is not maximum-data-byte-long
-        if (arrayLength % MAXIMUM_DATA_LENGTH != 0) {
-            this.waitACK(); // Wait for previous send ACK
+        if (dataLength % MTU != 0) {
+            this.waitACK();
 
-            byteBuffer = new byte[arrayLength % MAXIMUM_DATA_LENGTH]; // New byte object for leftover data
-            header.totalLength = integerToByte2(arrayLength % MAXIMUM_DATA_LENGTH); // Set total length of leftover data to Frame Header
+            frame = new byte[dataLength % MTU];
+            header.totalLength = integerToByte2(dataLength % MTU);
 
-            System.arraycopy(dataArray, arrayLength - (arrayLength % MAXIMUM_DATA_LENGTH), byteBuffer, 0, arrayLength % MAXIMUM_DATA_LENGTH);
-            byteBuffer = createFrame(byteBuffer, byteBuffer.length);
-            this.getUnderLayer().send(byteBuffer, byteBuffer.length, getLayerName());
+            System.arraycopy(dataArray, dataLength - (dataLength % MTU), frame, 0, dataLength % MTU);
+            frame = createFrame(frame, frame.length);
+            getUnderLayer().send(frame, frame.length, getLayerName());
         }
     }
 
     @Override
-    public boolean send(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer;
-        header.totalLength = integerToByte2(arrayLength);
+    public boolean send(byte[] dataArray, int dataLength) {
+        print("send : " + String.format("%s, %d", dataArray.toString(), dataLength));
+        printHex(dataArray, dataLength);
+
+        byte[] frame;
+        header.totalLength = integerToByte2(dataLength);
         header.type = (byte) (0x00);
 
-        this.waitACK(); // Wait for ACK
-        if (arrayLength > MAXIMUM_DATA_LENGTH) {
-            this.fragmentedSend(dataArray, arrayLength);
+        this.waitACK(); // Wait for Previous Send
+        if (dataLength > MTU) {
+            print("fragmented send");
+            fragmentedSend(dataArray, dataLength);
         } else {
-            byteBuffer = createFrame(dataArray, arrayLength);
-            getUnderLayer().send(byteBuffer, byteBuffer.length, getLayerName());
+            frame = createFrame(dataArray, dataLength);
+            getUnderLayer().send(frame, frame.length, getLayerName());
         }
 
         return true;
     }
 
     @Override
-    public synchronized boolean receive(byte[] dataArray) {
-        byte[] byteBuffer;
-        int dataType = 0;
+    public synchronized boolean receive(byte[] frame) {
+        if (frame == null) {
+            print("receive : ACK");
 
-        if (dataArray == null) { // ACK
             ackCheckList.add(true);
             return true;
         }
 
-        dataType |= (byte) (dataArray[2] & 0xFF);
+        print("receive : " + frame.toString());
+        printHex(frame, frame.length);
 
-        if (dataType == 0x00) {
-            // Unfragmented Data Type
-            byteBuffer = this.removeHeader(dataArray, dataArray.length);
-            this.getUpperLayer(0).receive(byteBuffer);
-        } else {
-            // Fragmented Data Type
-            if (dataType == 0x01) {
-                // First Receive (type 0x01)
-                int length = this.byte2ToInteger(dataArray[0], dataArray[1]); // First fragment has total length
-                this.fragBytes = new byte[length];
-                this.fragCount = 1;
-                byteBuffer = this.removeHeader(dataArray, dataArray.length);
-                System.arraycopy(byteBuffer, 0, this.fragBytes, 0, MAXIMUM_DATA_LENGTH);
-            } else if (dataType == 0x02) {
-                // Next Receive (type 0x02)
-                byteBuffer = this.removeHeader(dataArray, dataArray.length);
-                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * MAXIMUM_DATA_LENGTH, MAXIMUM_DATA_LENGTH);
-                this.fragCount++;
-            } else if (dataType == 0x03) {
-                // Final Receive (type 0x03)
-                byteBuffer = this.removeHeader(dataArray, dataArray.length);
-                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * MAXIMUM_DATA_LENGTH, this.byte2ToInteger(dataArray[0], dataArray[1]));
-                this.fragCount++;
-                // Send Combined Data to Upper Layer
-                this.getUpperLayer(0).receive(this.fragBytes);
-            } else {
-                throw new RuntimeException("unknown data type");
-            }
+        byte[] dataArray;
+        int dataType = (byte) (frame[2] & 0xFF);
 
+        switch (dataType) {
+            case 0x00:
+                print("un-fragmented data");
+
+                dataArray = removeHeader(frame, frame.length);
+                getUpperLayer(0).receive(dataArray, "ChatApp");
+                break;
+            case 0x01:
+                print("fragmented first data");
+
+                fragBytes = new byte[byte2ToInteger(frame[0], frame[1])];
+                fragCount = 1;
+                dataArray = removeHeader(frame, frame.length);
+                System.arraycopy(dataArray, 0, fragBytes, 0, MTU);
+                break;
+            case 0x02:
+                print("fragmented next data");
+
+                dataArray = removeHeader(frame, frame.length);
+                System.arraycopy(dataArray, 0, fragBytes, fragCount * MTU, MTU);
+                fragCount++;
+                break;
+            case 0x03:
+                print("fragmented last data");
+
+                dataArray = removeHeader(frame, frame.length);
+                System.arraycopy(dataArray, 0, fragBytes, fragCount * MTU, byte2ToInteger(frame[0], frame[1]));
+                fragCount++;
+                getUpperLayer(0).receive(fragBytes, "ChatApp");
+                break;
+            default:
+                printError("undefined type");
+                return false;
         }
-        this.getUnderLayer().send(null, 0, "ChatApp"); // Send ACK back
+
+        getUnderLayer().send(null, 0, "ChatApp");
         return true;
     }
 
     private static class ChatAppHeader {
+
         byte[] totalLength;
         byte type;
         byte unused;
-        @SuppressWarnings("unused")
         byte[] data;
 
         public ChatAppHeader() {
@@ -180,6 +201,7 @@ public class ChatAppLayer extends BaseLayer {
             this.unused = 0x00;
             this.data = null;
         }
+
     }
 
 }
