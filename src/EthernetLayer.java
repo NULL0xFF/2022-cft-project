@@ -40,12 +40,11 @@ public class EthernetLayer extends BaseLayer {
     /**
      * Send Ethernet Frame
      */
-    /* If the type is 0xff, the frame needs to be broadcasted */
     public boolean send(byte[] dataArray, int arrayLength) {
         if (dataArray == null && arrayLength == 0) 
-            header.type = integerToByte2(0x2081); // Chat && ACK
+            header.type = integerToByte2(0x2081); // Chat and ACK
         else
-            header.type = integerToByte2(0x2080); // Chat && Normal
+            header.type = integerToByte2(0x2080); // Chat and Normal
 
         byte[] bytes = this.objectToByte(header, dataArray, arrayLength);
         this.getUnderLayer().send(bytes, bytes.length);
@@ -55,9 +54,9 @@ public class EthernetLayer extends BaseLayer {
     
     public boolean fileSend(byte[] dataArray, int arrayLength) {
     	if (dataArray == null && arrayLength == 0) 
-    		header.type = integerToByte2(0x2091); // File && ACK
+    		header.type = integerToByte2(0x2091); // File and ACK
     	else 
-    		header.type = integerToByte2(0x2090); // File && Normal
+    		header.type = integerToByte2(0x2090); // File and Normal
     	
     	byte[] bytes = this.objectToByte(header, dataArray, arrayLength);
         this.getUnderLayer().send(bytes, bytes.length);
@@ -81,27 +80,33 @@ public class EthernetLayer extends BaseLayer {
         byte[] data;
         int dataType = byte2ToInteger(dataArray[12], dataArray[13]);
 
-        if (dataType == 0x01) { // Normal
+        if (dataType == 0x2080) { // Chat and Normal
             if (!this.isMyPacket(dataArray) && !this.isBroadcast(dataArray) && this.isMine(dataArray)) {
                 // Not My Packet & Not Broadcasted & Address pointing me!
                 data = this.removeHeader(dataArray, dataArray.length);
 
                 this.getUpperLayer(0).receive(data);
-                this.send(null, 0); // ACK
+                this.send(null, 0); // sned ACK
 
                 return true;
             }
         } 
-        else if (dataType == 0x02) { // ACK
+        else if (dataType == 0x2081) { // Chat and ACK
             this.getUpperLayer(0).receive(null);
         } 
-        else if (dataType == 0x2090) {
-        	
+        else if (dataType == 0x2090) { // File and Normal
+            if (!this.isMyPacket(dataArray) && !this.isBroadcast(dataArray) && this.isMine(dataArray)) {
+                // Not My Packet & Not Broadcasted & Address pointing me!
+                data = this.removeHeader(dataArray, dataArray.length);
+
+                this.getUpperLayer(1).receive(data);
+                this.fileSend(null, 0); // send ACK
+
+                return true;
+            }
         } 
-        else if {dataType == 0x2091) {
-        	
-        }
-        	
+        else if {dataType == 0x2091) { // File and ACK
+        	this.getUpperLayer(1).receive(null);
         }
         else {
             // undefined type
