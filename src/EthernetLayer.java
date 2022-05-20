@@ -105,7 +105,7 @@ public class EthernetLayer extends BaseLayer {
                 return true;
             }
         } 
-        else if {dataType == 0x2091) { // File and ACK
+        else if (dataType == 0x2091) { // File and ACK
         	this.getUpperLayer(1).receive(null);
         }
         else {
