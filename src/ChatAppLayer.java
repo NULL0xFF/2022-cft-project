@@ -49,44 +49,45 @@ public class ChatAppLayer extends BaseLayer {
         }
         ackCheckList.remove(0);
     }
-
+    //MTU = 1500 
+    //
     private void fragSend(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer = new byte[1500];
+        byte[] byteBuffer = new byte[1460];
         int i = 0;
         header.totalLength = integerToByte2(arrayLength);
         header.type = (byte) (0x01);
 
         // First Send (type 0x01)
-        //1500바이트 단위로 나뉨
-        System.arraycopy(dataArray, 0, byteBuffer, 0, 1500);
-        byteBuffer = objectToByte(header, byteBuffer, 1500);
+        //1460바이트 단위로 나뉨
+        System.arraycopy(dataArray, 0, byteBuffer, 0, 1460);
+        byteBuffer = objectToByte(header, byteBuffer, 1450);
         this.getUnderLayer().send(byteBuffer, byteBuffer.length);
 
-        int maxLength = arrayLength / 1500;
+        int maxLength = arrayLength / 1460;
 
         // Second Send (type 0x02)
-        header.totalLength = integerToByte2(1500); // Every 1500 bytes
+        header.totalLength = integerToByte2(1460); // Every 1500 bytes
         header.type = (byte) (0x02); // Type 0x02
         for (i = 1; i < maxLength; i++) {
             this.waitACK(); // Wait for previous send ACK
             // Check if this iteration is final iteration
-            if ((i + 1 == maxLength) && (arrayLength % 1500 == 0))
+            if ((i + 1 == maxLength) && (arrayLength % 1460 == 0))
                 header.type = (byte) (0x03); // This iteration is final so set type to 0x03
-            System.arraycopy(dataArray, 1500 * i, byteBuffer, 0, 15000);
-            byteBuffer = objectToByte(header, byteBuffer, 1500);
+            System.arraycopy(dataArray, 1460 * i, byteBuffer, 0, 1460);
+            byteBuffer = objectToByte(header, byteBuffer, 1460);
             this.getUnderLayer().send(byteBuffer, byteBuffer.length);
         }
 
         // Final Send (type 0x03)
         header.type = (byte) (0x03);
         // Leftover data which is not 10-byte-long
-        if (arrayLength % 1500 != 0) {
+        if (arrayLength % 1460 != 0) {
             this.waitACK(); // Wait for previous send ACK
 
-            byteBuffer = new byte[arrayLength % 1500]; // New byte object for leftover data
-            header.totalLength = integerToByte2(arrayLength % 1500); // Set total length of leftover data to Frame Header
+            byteBuffer = new byte[arrayLength % 1460]; // New byte object for leftover data
+            header.totalLength = integerToByte2(arrayLength % 1460); // Set total length of leftover data to Frame Header
 
-            System.arraycopy(dataArray, arrayLength - (arrayLength % 1500), byteBuffer, 0, arrayLength % 1500);
+            System.arraycopy(dataArray, arrayLength - (arrayLength % 1460), byteBuffer, 0, arrayLength % 1460);
             byteBuffer = objectToByte(header, byteBuffer, byteBuffer.length);
             this.getUnderLayer().send(byteBuffer, byteBuffer.length);
         }
@@ -98,7 +99,7 @@ public class ChatAppLayer extends BaseLayer {
         header.type = (byte) (0x00); // Flag for unfragmented data
 
         this.waitACK(); // Wait for ACK
-        if (length > 1500)
+        if (length > 1460)
             this.fragSend(input, length); // Send fragmented data
         else {
             byteBuffer = this.objectToByte(header, input, input.length); // Send data
@@ -118,7 +119,7 @@ public class ChatAppLayer extends BaseLayer {
         }
 
         dataType |= (byte) (input[2] & 0xFF);
-
+        //
         if (dataType == 0x00) {
             // Unfragmented Data Type
             byteBuffer = this.removeHeader(input, input.length);
@@ -135,12 +136,14 @@ public class ChatAppLayer extends BaseLayer {
             } else if (dataType == 0x02) {
                 // Next Receive (type 0x02)
                 byteBuffer = this.removeHeader(input, input.length);
-                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 1500, 1500);
+                //Application data 1460 바이트 중, 4바이트는 헤더가 차지한다
+                //따라서, 1460 - 4 인 1456 바이트가 실제 데이터 크기이다.
+                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 1456, 1456); 
                 this.fragCount++;
             } else if (dataType == 0x03) {
                 // Final Receive (type 0x03)
                 byteBuffer = this.removeHeader(input, input.length);
-                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 1500,
+                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 1456,
                         this.byte2ToInteger(input[0], input[1]));
                 this.fragCount++;
                 // Send Combined Data to Upper Layer
@@ -165,7 +168,7 @@ public class ChatAppLayer extends BaseLayer {
     private int byte2ToInteger(byte value1, byte value2) {
         return (value1 << 8) | (value2);
     }
-	//
+
     private class ChatAppHeader {
         byte[] totalLength;
         byte type;
