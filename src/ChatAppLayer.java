@@ -39,7 +39,7 @@ public class ChatAppLayer extends BaseLayer {
     }
 
     /* Polling */
-    private void waitACK() { // ACK 체크
+    private void waitACK() { // ACK 泥댄겕
         while (ackCheckList.size() <= 0) {
             try {
                 Thread.sleep(10);
@@ -51,41 +51,42 @@ public class ChatAppLayer extends BaseLayer {
     }
 
     private void fragSend(byte[] dataArray, int arrayLength) {
-        byte[] byteBuffer = new byte[10];
+        byte[] byteBuffer = new byte[1500];
         int i = 0;
         header.totalLength = integerToByte2(arrayLength);
         header.type = (byte) (0x01);
 
         // First Send (type 0x01)
-        System.arraycopy(dataArray, 0, byteBuffer, 0, 10);
-        byteBuffer = objectToByte(header, byteBuffer, 10);
+        //1500바이트 단위로 나뉨
+        System.arraycopy(dataArray, 0, byteBuffer, 0, 1500);
+        byteBuffer = objectToByte(header, byteBuffer, 1500);
         this.getUnderLayer().send(byteBuffer, byteBuffer.length);
 
-        int maxLength = arrayLength / 10;
+        int maxLength = arrayLength / 1500;
 
         // Second Send (type 0x02)
-        header.totalLength = integerToByte2(10); // Every 10 bytes
+        header.totalLength = integerToByte2(1500); // Every 1500 bytes
         header.type = (byte) (0x02); // Type 0x02
         for (i = 1; i < maxLength; i++) {
             this.waitACK(); // Wait for previous send ACK
             // Check if this iteration is final iteration
-            if ((i + 1 == maxLength) && (arrayLength % 10 == 0))
+            if ((i + 1 == maxLength) && (arrayLength % 1500 == 0))
                 header.type = (byte) (0x03); // This iteration is final so set type to 0x03
-            System.arraycopy(dataArray, 10 * i, byteBuffer, 0, 10);
-            byteBuffer = objectToByte(header, byteBuffer, 10);
+            System.arraycopy(dataArray, 1500 * i, byteBuffer, 0, 15000);
+            byteBuffer = objectToByte(header, byteBuffer, 1500);
             this.getUnderLayer().send(byteBuffer, byteBuffer.length);
         }
 
         // Final Send (type 0x03)
         header.type = (byte) (0x03);
         // Leftover data which is not 10-byte-long
-        if (arrayLength % 10 != 0) {
+        if (arrayLength % 1500 != 0) {
             this.waitACK(); // Wait for previous send ACK
 
-            byteBuffer = new byte[arrayLength % 10]; // New byte object for leftover data
-            header.totalLength = integerToByte2(arrayLength % 10); // Set total length of leftover data to Frame Header
+            byteBuffer = new byte[arrayLength % 1500]; // New byte object for leftover data
+            header.totalLength = integerToByte2(arrayLength % 1500); // Set total length of leftover data to Frame Header
 
-            System.arraycopy(dataArray, arrayLength - (arrayLength % 10), byteBuffer, 0, arrayLength % 10);
+            System.arraycopy(dataArray, arrayLength - (arrayLength % 1500), byteBuffer, 0, arrayLength % 1500);
             byteBuffer = objectToByte(header, byteBuffer, byteBuffer.length);
             this.getUnderLayer().send(byteBuffer, byteBuffer.length);
         }
@@ -97,7 +98,7 @@ public class ChatAppLayer extends BaseLayer {
         header.type = (byte) (0x00); // Flag for unfragmented data
 
         this.waitACK(); // Wait for ACK
-        if (length > 10)
+        if (length > 1500)
             this.fragSend(input, length); // Send fragmented data
         else {
             byteBuffer = this.objectToByte(header, input, input.length); // Send data
@@ -134,12 +135,12 @@ public class ChatAppLayer extends BaseLayer {
             } else if (dataType == 0x02) {
                 // Next Receive (type 0x02)
                 byteBuffer = this.removeHeader(input, input.length);
-                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 10, 10);
+                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 1500, 1500);
                 this.fragCount++;
             } else if (dataType == 0x03) {
                 // Final Receive (type 0x03)
                 byteBuffer = this.removeHeader(input, input.length);
-                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 10,
+                System.arraycopy(byteBuffer, 0, this.fragBytes, this.fragCount * 1500,
                         this.byte2ToInteger(input[0], input[1]));
                 this.fragCount++;
                 // Send Combined Data to Upper Layer
