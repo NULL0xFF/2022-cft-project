@@ -12,129 +12,148 @@ public class NILayer extends BaseLayer {
 
     static {
         try {
+            String jNetPcap = null;
+            String osName = System.getProperty("os.name");
+            print("operating system : " + osName);
+
+            if (isWindows(System.getProperty("os.name").toLowerCase())) jNetPcap = "jnetpcap.dll";
+            else if (isUnix(System.getProperty("os.name").toLowerCase())) jNetPcap = "libjnetpcap.so";
+            else throwRuntimeException("unsupported operating system");
+
             // Native Library Load
-            String jNetPcapFile = null;
-            System.out.println(System.getProperty("os.name"));
-
-            if (isWindows(System.getProperty("os.name").toLowerCase()))
-                jNetPcapFile = "jnetpcap.dll";
-            else if (isUnix(System.getProperty("os.name").toLowerCase()))
-                jNetPcapFile = "libjnetpcap.so";
-            else
-                throw new RuntimeException("unsupported operating system");
-
-            System.load(new File(jNetPcapFile).getAbsolutePath());
-            System.out.println(new File(jNetPcapFile).getAbsolutePath());
+            File jNetPcapFile = new File(jNetPcap);
+            System.load(jNetPcapFile.getAbsolutePath());
+            print("file loaded : " + jNetPcapFile.getName());
         } catch (UnsatisfiedLinkError e) {
-            System.out.println("Native code library failed to load.\n" + e);
+            printError("native code library failed to load\n" + e);
             System.exit(1);
         }
     }
 
-    private final ArrayList<PcapIf> adapterList = new ArrayList<PcapIf>();
-    private final StringBuilder errorBuffer = new StringBuilder();
-    private Pcap adapterObject = null;
-    private PcapIf adapterDevice = null;
+    private final ArrayList<PcapIf> pcapInterfaceList = new ArrayList<>();
+    private final StringBuilder errorStringBuilder = new StringBuilder();
+    private Pcap pcapObject = null;
+    private PcapIf pcapInterface = null;
 
     public NILayer(String name) {
         super(name);
-        setAdapterList();
+        setInterfaceList();
     }
 
     private static boolean isWindows(String osName) {
-        return osName.indexOf("win") >= 0;
+        return osName.contains("win");
     }
 
     private static boolean isUnix(String osName) {
-        return osName.indexOf("nix") >= 0 || osName.indexOf("nux") >= 0 || osName.indexOf("aix") >= 0;
+        return osName.contains("nix") || osName.contains("nux") || osName.contains("aix");
     }
 
-    public ArrayList<PcapIf> getAdapterList() {
-        return this.adapterList;
+    private static void throwRuntimeException(String errStr) {
+        throw new RuntimeException("[NILayer] " + errStr);
     }
 
-    private void setAdapterList() {
+    private static void print(String str) {
+        System.out.println("[NILayer] " + str);
+    }
+
+    private static void printError(String errStr) {
+        System.err.println("[NILayer] " + errStr);
+    }
+
+    public ArrayList<PcapIf> getInterfaceList() {
+        return pcapInterfaceList;
+    }
+
+    private void setInterfaceList() {
         // Bring All Network Adapter list of Host PC
-        int r = Pcap.findAllDevs(adapterList, errorBuffer);
-        System.out.println("Number of I/F : " + adapterList.size());
+        int result = Pcap.findAllDevs(pcapInterfaceList, errorStringBuilder);
+        print("number of interface : " + pcapInterfaceList.size());
         // Error if there are no Network Adapter
-        if (r == Pcap.NOT_OK || adapterList.isEmpty())
-            System.out.println("[Error] Cannot read NIC. Error : " + errorBuffer.toString());
+        if (result == Pcap.NOT_OK || pcapInterfaceList.isEmpty())
+            printError("cannot read network interface card\n" + errorStringBuilder);
     }
 
-    public void setAdapter(String adapterName) {
-        adapterDevice = getAdapter(adapterName);
-        packetStartDriver();
+    public void setInterfaceByName(String interfaceName) {
+        pcapInterface = getInterface(interfaceName);
+        capturePacket();
         receive();
     }
 
-    public String getAdapterMACAddress(String adapterName) {
+    public String getInterfaceMACAddess(String interfaceName) {
         String macAddress = "";
         try {
-            macAddress = parseMACAddress(this.getAdapter(adapterName).getHardwareAddress());
+            macAddress = parseMACAddress(getInterface(interfaceName).getHardwareAddress());
         } catch (IOException e) {
-            e.printStackTrace();
+            printError("faild to get MAC address from interface " + interfaceName + "\n" + e);
         }
         return macAddress;
     }
 
-    public String parseMACAddress(byte[] byteMACAddress) {
+    private String parseMACAddress(byte[] byteMACAddress) {
         if (byteMACAddress == null) return "";
         String macAddress = "";
-        for (int i = 0; i < 6; i++) {
-            // 2자리 16진수를 대문자로, 그리고 1자리 16진수는 앞에 0을 붙임.
-            macAddress += String.format("%02X%s", byteMACAddress[i], "");
-
-            if (i != 5) {
-                // 2자리 16진수 자리 단위 뒤에 "-"붙여주기
+        for (int index = 0; index < 6; index++) {
+            // byte to HEX
+            macAddress += String.format("%02X%s", byteMACAddress[index], "");
+            if (index != 5) {
                 macAddress += "-";
             }
         }
-        System.out.println("mac_address:" + macAddress);
+        print("parsed MAC address : " + macAddress);
         return macAddress;
     }
 
-    private void packetStartDriver() {
-        int snaplen = 64 * 1024; // Capture all packets, no trucation
-        int flags = Pcap.MODE_PROMISCUOUS; // capture all packets
-        int timeout = 10 * 1000; // 10 seconds in millis
-        adapterObject = Pcap.openLive(adapterDevice.getName(), snaplen, flags, timeout, errorBuffer);
-    }
-
-    private PcapIf getAdapter(String adapterName) {
-        for (PcapIf adapter : adapterList)
-            if (adapter.getName().equals(adapterName))
-                return adapter;
+    public PcapIf getInterface(String interfaceName) {
+        for (PcapIf pI : pcapInterfaceList)
+            if (pI.getName().equals(interfaceName)) return pI;
         return null;
     }
 
+
+    private void capturePacket() {
+        int snaplen = 64 * 1024; // Capture all packets, no trucation
+        int flags = Pcap.MODE_PROMISCUOUS; // capture all packets
+        int timeout = 10 * 1000; // 10 seconds in millis
+        pcapObject = Pcap.openLive(pcapInterface.getName(), snaplen, flags, timeout, errorStringBuilder);
+    }
+
     @Override
-    public boolean send(byte[] input, int length) {
-        ByteBuffer byteBuffer = ByteBuffer.wrap(input);
-        if (adapterObject.sendPacket(byteBuffer) != Pcap.OK) {
-            System.err.println(adapterObject.getErr());
+    public boolean send(byte[] dataArray, int arrayLength) {
+        StringBuilder stringBuilder = new StringBuilder();
+        for (int index = 0; index < arrayLength; index++) {
+            stringBuilder.append(String.format("%02X ", dataArray[index]));
+            if ((index + 1) % 8 == 0 && (index + 1) != arrayLength) {
+                print(stringBuilder.toString());
+                stringBuilder.setLength(0);
+            }
+        }
+        print(stringBuilder.toString());
+        ByteBuffer byteBuffer = ByteBuffer.wrap(dataArray);
+        if (pcapObject.sendPacket(byteBuffer) != Pcap.OK) {
+            printError(pcapObject.getErr());
             return false;
         }
+        print("data sent with size " + arrayLength);
+        print(dataArray.toString());
         return true;
     }
 
     @Override
     public boolean receive() {
-        ReceiveThread receiveThread = new ReceiveThread(adapterObject, this.getUpperLayer(0));
-        Thread thread = new Thread(receiveThread);
-        thread.start();
-
+        new Thread(new ReceiveThread(pcapObject, getUpperLayer(0))).start();
         return false;
     }
 
-    private class ReceiveThread implements Runnable {
-        byte[] data;
-        Pcap adapterObject;
-        LayerInterface upperLayer;
 
-        public ReceiveThread(Pcap adapObj, LayerInterface uLayer) {
-            this.adapterObject = adapObj;
-            this.upperLayer = uLayer;
+    private class ReceiveThread implements Runnable {
+
+        private final Pcap pcapObject;
+        private final LayerInterface upperLayer;
+        private byte[] data;
+
+        public ReceiveThread(Pcap pcapObject, LayerInterface layer) {
+            this.pcapObject = pcapObject;
+            this.upperLayer = layer;
         }
 
         @Override
@@ -142,14 +161,15 @@ public class NILayer extends BaseLayer {
             while (true) {
                 PcapPacketHandler<String> jPacketHandler = new PcapPacketHandler<String>() {
                     @Override
-                    public void nextPacket(PcapPacket pcapPacket, String user) {
-                        data = pcapPacket.getByteArray(0, pcapPacket.size());
+                    public void nextPacket(PcapPacket packet, String user) {
+                        data = packet.getByteArray(0, packet.size());
+                        print("data received with size " + packet.size());
                         upperLayer.receive(data);
                     }
                 };
-                adapterObject.loop(100000, jPacketHandler, "");
+                pcapObject.loop(100000, jPacketHandler, "");
             }
         }
-    }
 
+    }
 }

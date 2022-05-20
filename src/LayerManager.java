@@ -1,131 +1,127 @@
 import java.util.ArrayList;
 import java.util.StringTokenizer;
 
-/**
- * Layer Manager Class
- */
-/* Connects Layers */
 public class LayerManager {
 
-    Node mp_sListHead;
-    Node mp_sListTail;
-    private int m_nTop;
-    private int m_nLayerCount;
-    private final ArrayList<LayerInterface> mp_Stack = new ArrayList<LayerInterface>();
-    private final ArrayList<LayerInterface> mp_aLayers = new ArrayList<LayerInterface>();// chatapp,socket,IPCDIG들을 저장
+    private final ArrayList<LayerInterface> layerStack = new ArrayList<>();
+    private final ArrayList<LayerInterface> layerList = new ArrayList<>();
+    private int topLayerNumber;
+    private Node front;
+    private Node rear;
+    private int layerCount;
 
     public LayerManager() {
-        m_nLayerCount = 0;
-        mp_sListHead = null;
-        mp_sListTail = null;
-        m_nTop = -1;
+        front = rear = null;
+        layerCount = 0;
+        topLayerNumber = -1;
     }
 
-    public void addLayer(LayerInterface pLayer) {
-        mp_aLayers.add(m_nLayerCount++, pLayer);
-        // m_nLayerCount++;
+    public void addLayer(LayerInterface layer) {
+        layerList.add(layerCount, layer);
+        layerCount++;
     }
 
-    public LayerInterface getLayer(int nindex) {
-        return mp_aLayers.get(nindex);
+    public LayerInterface getLayer(int index) {
+        return layerList.get(index);
     }
 
-    public LayerInterface getLayer(String pName) {
-        for (int i = 0; i < m_nLayerCount; i++) {
-            if (pName.compareTo(mp_aLayers.get(i).getLayerName()) == 0) return mp_aLayers.get(i);
-        }
+    public LayerInterface getLayer(String name) {
+        for (LayerInterface layer : layerList)
+            if (layer.getLayerName().equals(name)) return layer;
         return null;
     }
 
-    public void connectLayers(String pcList) {
-        makeList(pcList);
-        linkLayer(mp_sListHead); // mPList에 넣은 값들과 연결
+    public void connectLayers(String layerListString) {
+        makeList(layerListString);
+        linkLayer(front);
     }
 
-    private void makeList(String pcList) { // 들어오는 Layer 이름을 token으로 잘름
-        StringTokenizer tokens = new StringTokenizer(pcList, " ");
+    private void makeList(String layerListString) {
+        StringTokenizer tokenizer = new StringTokenizer(layerListString, " ");
 
-        for (; tokens.hasMoreElements(); ) {
-            Node pNode = allocNode(tokens.nextToken()); // 각 토큰을 노드로 할당
-            addNode(pNode);// 해당 토큰의 노드를 mp_list로 연결해줌
-
+        while (tokenizer.hasMoreTokens()) {
+            Node node = new Node(tokenizer.nextToken());
+            addNode(node);
         }
     }
 
-    private Node allocNode(String pcName) { // 각 토큰의 노드들을 연결해줌
-        Node node = new Node(pcName);
-
-        return node;
-    }
-
-    private void addNode(Node pNode) {
-        if (mp_sListHead == null) {
-            mp_sListHead = mp_sListTail = pNode;
+    private void addNode(Node node) {
+        if (front == null) {
+            front = rear = node;
         } else {
-            mp_sListTail.next = pNode;
-            mp_sListTail = pNode;
+            rear.next = node;
+            rear = node;
         }
     }
 
-    private void push(LayerInterface pLayer) {
-        mp_Stack.add(++m_nTop, pLayer);
-        // mp_Stack.add(pLayer);
-        // m_nTop++;
-    }
+    private void linkLayer(Node node) {
+        LayerInterface layer = null;
 
-    private LayerInterface pop() {
-        LayerInterface pLayer = mp_Stack.get(m_nTop);
-        mp_Stack.remove(m_nTop);
-        m_nTop--;
-
-        return pLayer;
-    }
-
-    private LayerInterface top() {
-        return mp_Stack.get(m_nTop);
-    }
-
-    private void linkLayer(Node pNode) { // 계층 간 연결해줌
-        LayerInterface pLayer = null;
-
-        while (pNode != null) {
-            if (pLayer == null) pLayer = getLayer(pNode.token);
+        while (node != null) {
+            if (layer == null) layer = getLayer(node.getToken());
             else {
-                if (pNode.token.equals("(")) push(pLayer);
-                else if (pNode.token.equals(")")) pop();
+                if (node.getToken().equals("(")) push(layer);
+                else if (node.getToken().equals(")")) pop();
                 else {
-                    char cMode = pNode.token.charAt(0);
-                    String pcName = pNode.token.substring(1);
+                    char mode = node.getToken().charAt(0);
+                    String name = node.getToken().substring(1);
 
-                    pLayer = getLayer(pcName);
+                    layer = getLayer(name);
 
-                    switch (cMode) {
+                    switch (mode) {
                         case '*':
-                            top().setUpperUnderLayer(pLayer); // 양방향연결
+                            top().setUpperUnderLayer(layer);
                             break;
                         case '+':
-                            top().setUpperLayer(pLayer); // 윗방향 연결
+                            top().setUpperLayer(layer);
                             break;
                         case '-':
-                            top().setUnderLayer(pLayer); // 아래방향 연결
+                            top().setUnderLayer(layer);
                             break;
                     }
+
                 }
             }
 
-            pNode = pNode.next;
-
+            node = node.getNext();
         }
     }
 
-    private class Node {
+    private void push(LayerInterface layer) {
+        topLayerNumber++;
+        layerStack.add(topLayerNumber, layer);
+    }
+
+    private LayerInterface pop() {
+        LayerInterface layer = layerStack.get(topLayerNumber);
+        layerStack.remove(topLayerNumber);
+        topLayerNumber--;
+        return layer;
+    }
+
+    private LayerInterface top() {
+        return layerStack.get(topLayerNumber);
+    }
+
+    private static class Node {
         private final String token;
         private Node next;
 
-        public Node(String input) {
-            this.token = input;
+        public Node(String token) {
+            this.token = token;
             this.next = null;
         }
-    }
 
+        public String getToken() {
+            return this.token;
+        }
+
+        public Node getNext() {
+            return this.next;
+        }
+
+        public void setNext(Node nextNode) {
+            this.next = nextNode;
+        }
+    }
 }

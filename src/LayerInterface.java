@@ -1,77 +1,102 @@
-/**
- * Base Layer Interface
- */
-interface LayerInterface {
+public interface LayerInterface {
 
     /**
-     * Get Layer Name
+     * Get Layer Name String
+     *
+     * @return layerName
      */
     String getLayerName();
 
     /**
-     * Get Under Layer
+     * Get Under Layer Object
+     *
+     * @return underLayer
      */
     LayerInterface getUnderLayer();
 
     /**
-     * Set Under Layer
+     * Set Under Layer Object
+     *
+     * @param underLayer LayerInterface Object
      */
     void setUnderLayer(LayerInterface underLayer);
 
     /**
-     * Get Upper Layer
+     * Get Upper Layer Object
+     *
+     * @param index int
+     * @return upperLayer
      */
     LayerInterface getUpperLayer(int index);
 
     /**
-     * Set Upper Layer
+     * Get Upper Layer Object
+     *
+     * @param layerName String
+     * @return upperLayer
+     */
+    LayerInterface getUpperLayer(String layerName);
+
+    /**
+     * Set Upper Layer Object
+     *
+     * @param upperLayer LayerInterface Object
      */
     void setUpperLayer(LayerInterface upperLayer);
 
     /**
-     * Set Under Upper Layer
+     * Set Under Upper Layer Object
+     *
+     * @param underUpperLayer LayerInterface Object
      */
-    default void setUnderUpperLayer(LayerInterface underUpperLayer) {
-    }
+    void setUnderUpperLayer(LayerInterface underUpperLayer);
 
     /**
-     * Set Upper Under Layer
+     * Set Upper Under Layer Object
+     *
+     * @param upperUnderLayer LayerInterface Object
      */
     void setUpperUnderLayer(LayerInterface upperUnderLayer);
 
-////////////////////////////////////////////////////////////////////////////
-    /*
-     * When declared with "default", it can be implemented in interface and
-     * override-able.
+    /**
+     * Send Byte Data
+     *
+     * @param dataArray   byte[]
+     * @param arrayLength int
+     * @return boolean
      */
+    boolean send(byte[] dataArray, int arrayLength);
 
     /**
-     * Send
+     * Send Byte Data
+     *
+     * @param dataArray   byte[]
+     * @param arrayLength int
+     * @param layerName   String
+     * @return boolean
      */
-    default boolean send(byte[] input, int length) {
-        return false;
-    }
+    boolean send(byte[] dataArray, int arrayLength, String layerName);
 
     /**
-     * Send
+     * Send File Data
+     *
+     * @param fileName String
+     * @return boolean
      */
-    default boolean send(String filename) {
-        return false;
-    }
+    boolean send(String fileName);
+
+    /**
+     * Receive Data
+     *
+     * @param dataArray byte[]
+     * @return boolean
+     */
+    boolean receive(byte[] dataArray);
 
     /**
      * Receive
+     *
+     * @return boolean
      */
-    default boolean receive(byte[] input) {
-        return false;
-    }
-
-    /**
-     * Receive
-     */
-    default boolean receive() {
-        return false;
-    }
-////////////////////////////////////////////////////////////////////////////
-
+    boolean receive();
 }
