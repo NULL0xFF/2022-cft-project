@@ -165,7 +165,7 @@ public class ChatAppLayer extends BaseLayer {
     private int byte2ToInteger(byte value1, byte value2) {
         return (value1 << 8) | (value2);
     }
-
+	//
     private class ChatAppHeader {
         byte[] totalLength;
         byte type;
