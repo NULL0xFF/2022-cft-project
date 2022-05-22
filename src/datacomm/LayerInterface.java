@@ -1,3 +1,5 @@
+package datacomm;
+
 public interface LayerInterface {
 
     String getLayerName();
@@ -19,6 +21,8 @@ public interface LayerInterface {
     boolean send(byte[] dataArray, int dataLength);
 
     boolean send(byte[] dataArray, int dataLength, String layerName);
+
+    boolean send(String filePath);
 
     boolean receive();
 

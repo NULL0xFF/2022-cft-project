@@ -1,3 +1,5 @@
+package datacomm;
+
 import java.util.ArrayList;
 
 public class ChatAppLayer extends BaseLayer {
@@ -32,33 +34,19 @@ public class ChatAppLayer extends BaseLayer {
     }
 
     private byte[] removeHeader(byte[] frame, int frameLength) {
-        print("remove header : " + String.format("%s, %d", frame.toString(), frameLength));
-        printHex(frame, frameLength);
-
         byte[] dataArray = new byte[frameLength - 4]; // Remove ChatApp Header
         System.arraycopy(frame, 4, dataArray, 0, frameLength - 4);
-
-        print("return " + dataArray.toString());
-        printHex(dataArray, dataArray.length);
-
         return dataArray;
     }
 
     private byte[] integerToByte2(int value) {
-        print("integer to byte[2] : " + String.format("0x%08X", value));
-
         byte[] byteBuffer = new byte[2];
         byteBuffer[0] |= (byte) ((value & 0xFF00) >> 8);
         byteBuffer[1] |= (byte) (value & 0xFF);
-
-        print("return " + String.format("0x%02X%02X", byteBuffer[0], byteBuffer[1]));
-
         return byteBuffer;
     }
 
     private int byte2ToInteger(byte value1, byte value2) {
-        print("byte[2] to integer : " + String.format("0x%02X%02X", value1, value2));
-        print("return " + String.format("0x%08X", ((value1 & 0xFF) << 8) | (value2 & 0xFF)));
         return ((value1 & 0xFF) << 8) | (value2 & 0xFF);
     }
 
@@ -115,7 +103,7 @@ public class ChatAppLayer extends BaseLayer {
 
     @Override
     public boolean send(byte[] dataArray, int dataLength) {
-        print("send : " + String.format("%s, %d", dataArray.toString(), dataLength));
+        print("send");
         printHex(dataArray, dataLength);
 
         byte[] frame;
@@ -151,29 +139,21 @@ public class ChatAppLayer extends BaseLayer {
 
         switch (dataType) {
             case 0x00:
-                print("un-fragmented data");
-
                 dataArray = removeHeader(frame, frame.length);
                 getUpperLayer(0).receive(dataArray, "ChatApp");
                 break;
             case 0x01:
-                print("fragmented first data");
-
                 fragBytes = new byte[byte2ToInteger(frame[0], frame[1])];
                 fragCount = 1;
                 dataArray = removeHeader(frame, frame.length);
                 System.arraycopy(dataArray, 0, fragBytes, 0, MTU);
                 break;
             case 0x02:
-                print("fragmented next data");
-
                 dataArray = removeHeader(frame, frame.length);
                 System.arraycopy(dataArray, 0, fragBytes, fragCount * MTU, MTU);
                 fragCount++;
                 break;
             case 0x03:
-                print("fragmented last data");
-
                 dataArray = removeHeader(frame, frame.length);
                 System.arraycopy(dataArray, 0, fragBytes, fragCount * MTU, byte2ToInteger(frame[0], frame[1]));
                 fragCount++;
@@ -184,6 +164,7 @@ public class ChatAppLayer extends BaseLayer {
                 return false;
         }
 
+        print("send ACK");
         getUnderLayer().send(null, 0, "ChatApp");
         return true;
     }

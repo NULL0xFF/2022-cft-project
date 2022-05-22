@@ -1,3 +1,5 @@
+package datacomm;
+
 public class EthernetLayer extends BaseLayer {
 
     private static final int MTU = 1500;
@@ -24,33 +26,19 @@ public class EthernetLayer extends BaseLayer {
     }
 
     private byte[] removeHeader(byte[] frame, int frameLength) {
-        print("remove header : " + String.format("%s, %d", frame.toString(), frameLength));
-        printHex(frame, frameLength);
-
         byte[] dataArray = new byte[frameLength - 54]; // Remove Ethernet & IP & TCP Header
         System.arraycopy(frame, 54, dataArray, 0, frameLength - 54);
-
-        print("return " + dataArray.toString());
-        printHex(dataArray, dataArray.length);
-
         return dataArray;
     }
 
     private byte[] integerToByte2(int value) {
-        print("integer to byte[2] : " + String.format("0x%08X", value));
-
         byte[] byteBuffer = new byte[2];
         byteBuffer[0] |= (byte) ((value & 0xFF00) >> 8);
         byteBuffer[1] |= (byte) (value & 0xFF);
-
-        print("return " + String.format("0x%02X%02X", byteBuffer[0], byteBuffer[1]));
-
         return byteBuffer;
     }
 
     private int byte2ToInteger(byte value1, byte value2) {
-        print("byte[2] to integer : " + String.format("0x%02X%02X", value1, value2));
-        print("return " + String.format("0x%08X", ((value1 & 0xFF) << 8) | (value2 & 0xFF)));
         return ((value1 & 0xFF) << 8) | (value2 & 0xFF);
     }
 
@@ -76,8 +64,8 @@ public class EthernetLayer extends BaseLayer {
 
     @Override
     public boolean send(byte[] dataArray, int dataLength, String layerName) {
-        print("send : " + String.format("%s, %d, %s", dataArray == null ? "null" : dataArray.toString(), dataLength, layerName));
-        if (dataArray != null) printHex(dataArray, dataLength);
+//        print("send : " + String.format("%s, %d, %s", dataArray == null ? "null" : dataArray.toString(), dataLength, layerName));
+//        if (dataArray != null) printHex(dataArray, dataLength);
 
         if (layerName == null) {
             printError("layer name is null");
@@ -86,22 +74,22 @@ public class EthernetLayer extends BaseLayer {
             case "ChatApp":
                 if (dataArray == null && dataLength == 0) {
                     // ChatApp ACK
-                    print("sending ChatApp ACK");
+                    // print("sending ChatApp ACK");
                     header.type = integerToByte2(0x2081);
                 } else {
                     // ChatApp Data
-                    print("sending ChatApp Data");
+                    // print("sending ChatApp Data");
                     header.type = integerToByte2(0x2080);
                 }
                 break;
             case "FileApp":
                 if (dataArray == null && dataLength == 0) {
                     // FileApp ACK
-                    print("sending FileApp ACK");
+                    // print("sending FileApp ACK");
                     header.type = integerToByte2(0x2091);
                 } else {
                     // FileApp Data
-                    print("sending FileApp Data");
+                    // print("sending FileApp Data");
                     header.type = integerToByte2(0x2090);
                 }
                 break;
@@ -112,17 +100,16 @@ public class EthernetLayer extends BaseLayer {
 
         byte[] frame = createFrame(dataArray, dataLength);
 
-        print("send frame to under layer");
-        printHex(frame, frame.length);
+//        print("send frame to under layer");
+//        if (layerName.equals("FileApp"))
+//            printHex(frame, frame.length);
 
         getUnderLayer().send(frame, frame.length);
         return true;
     }
 
     @Override
-    public synchronized boolean receive(byte[] frame) {
-        print("receive : " + frame.toString());
-        printHex(frame, frame.length);
+    public boolean receive(byte[] frame) {
 
         byte[] dataArray;
         int dataType = byte2ToInteger(frame[12], frame[13]);
@@ -131,35 +118,19 @@ public class EthernetLayer extends BaseLayer {
             dataArray = removeHeader(frame, frame.length);
             switch (dataType) {
                 case 0x2080:
-                    // ChatApp Data
-                    print("received ChatApp Data");
-                    printHex(frame, frame.length);
-
                     getUpperLayer("ChatApp").receive(dataArray);
                     break;
                 case 0x2081:
-                    // ChatApp ACK
-                    print("received ChatApp ACK");
-                    printHex(frame, frame.length);
-
                     getUpperLayer("ChatApp").receive(null);
                     break;
                 case 0x2090:
-                    // FileApp Data
-                    print("received FileApp Data");
-                    printHex(frame, frame.length);
-
                     getUpperLayer("FileApp").receive(dataArray);
                     break;
                 case 0x2091:
-                    // FileApp ACK
-                    print("received FileApp ACK");
-                    printHex(frame, frame.length);
-
                     getUpperLayer("FileApp").receive(null);
                     break;
                 default:
-                    printError("undefined type");
+                    if (dataType != 0x0800) printError("undefined type " + String.format("%04X", dataType));
                     return false;
             }
             return true;
