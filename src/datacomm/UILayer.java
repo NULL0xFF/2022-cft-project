@@ -1,3 +1,5 @@
+package datacomm;
+
 import org.jnetpcap.PcapIf;
 
 import javax.swing.*;
@@ -5,6 +7,9 @@ import javax.swing.filechooser.FileSystemView;
 import java.awt.*;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.io.File;
+
+import static javax.swing.SwingUtilities.invokeLater;
 
 public class UILayer extends BaseLayer {
 
@@ -12,6 +17,7 @@ public class UILayer extends BaseLayer {
 
     private final Dimension preferredDimension = new Dimension(80, 24);
 
+    private JPanel mainPanel;
     private JTextArea chatTextArea;
     private JScrollPane chatTextPane;
     private JTextField chatInputField;
@@ -44,12 +50,13 @@ public class UILayer extends BaseLayer {
         LAYER_MANAGER.addLayer(new NILayer("NI"));
         LAYER_MANAGER.addLayer(new EthernetLayer("Ethernet"));
         LAYER_MANAGER.addLayer(new ChatAppLayer("ChatApp"));
+        LAYER_MANAGER.addLayer(new FileAppLayer("FileApp"));
         LAYER_MANAGER.addLayer(new UILayer("GUI"));
-        LAYER_MANAGER.connectLayers(" NI ( *Ethernet ( *ChatApp ( *GUI ) ) )");
+        LAYER_MANAGER.connectLayers(" NI ( *Ethernet ( *ChatApp ( *GUI ) *FileApp ( *GUI ) ) )");
     }
 
     private JPanel createUIPanel() {
-        JPanel mainPanel = new JPanel(new BorderLayout(0, 0));
+        mainPanel = new JPanel(new BorderLayout(0, 0));
         JPanel interactivePanel = new JPanel();
         interactivePanel.setLayout(new BoxLayout(interactivePanel, BoxLayout.Y_AXIS));
 
@@ -79,8 +86,7 @@ public class UILayer extends BaseLayer {
         chatInputField.addKeyListener(new KeyAdapter() {
             @Override
             public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER)
-                    chatSendButton.doClick();
+                if (e.getKeyCode() == KeyEvent.VK_ENTER) chatSendButton.doClick();
             }
         });
         chatSendButton.setPreferredSize(preferredDimension);
@@ -112,7 +118,7 @@ public class UILayer extends BaseLayer {
         JPanel fileButtonPanel = new JPanel(new GridLayout(1, 2, 0, 0));
         fileSelectButton = new JButton("Select");
         fileSendButton = new JButton("Send");
-        fileProgressBar = new JProgressBar();
+        fileProgressBar = new JProgressBar(JProgressBar.HORIZONTAL, 0, 100);
 
         filePanel.setBorder(BorderFactory.createTitledBorder("File Transfer"));
         filePathField.setPreferredSize(preferredDimension);
@@ -140,12 +146,23 @@ public class UILayer extends BaseLayer {
         fileSendButton.setEnabled(false);
         fileSendButton.addActionListener(actionEvent -> {
             // TODO Implement File Transfer
-//            File file = new File(filePath);
-//            if (file.canRead()) {
-//                chatTextArea.append(
-//                        "[FILE] : File Name - " + file.getName() + "\n" + "[FILE] : Waiting for opponent to accept\n");
-//                LAYER_MANAGER.getLayer("FileApp").send(filePath);
-//            }
+            if (settingButton.getText().equals("Reset")) {
+                File file = new File(filePath);
+                if (file.canRead()) {
+                    chatTextArea.append("[FILE] : File name \"" + file.getName() + "\"\n" + "[FILE] : Waiting for opponent to accept\n");
+                    new Thread(() -> {
+                        LAYER_MANAGER.getLayer("FileApp").send(filePath);
+                        fileSelectButton.setEnabled(true);
+                        fileSendButton.setEnabled(true);
+                    }).start();
+                    fileSelectButton.setEnabled(false);
+                    fileSendButton.setEnabled(false);
+                } else {
+                    chatTextArea.append("[FILE] : Cannot read file name \"" + file.getName() + "\"\n");
+                    fileSelectButton.setEnabled(true);
+                    fileSendButton.setEnabled(true);
+                }
+            }
         });
         fileProgressBar.setPreferredSize(preferredDimension);
 
@@ -182,8 +199,7 @@ public class UILayer extends BaseLayer {
         }
         networkInterfaceComboBox.addActionListener(actionEvent -> {
             if (networkInterfaceComboBox.getSelectedItem() != null)
-                sourceAddressField.setText(((NILayer) LAYER_MANAGER.getLayer("NI"))
-                        .getInterfaceMACAddress(networkInterfaceComboBox.getSelectedItem().toString()));
+                sourceAddressField.setText(((NILayer) LAYER_MANAGER.getLayer("NI")).getInterfaceMACAddress(networkInterfaceComboBox.getSelectedItem().toString()));
         });
         sourceAddressLabel.setPreferredSize(settingDefaultDimension);
         sourceAddressField.setPreferredSize(settingDefaultDimension);
@@ -198,6 +214,7 @@ public class UILayer extends BaseLayer {
                 settingButton.setText("Setting");
                 sourceAddressField.setEnabled(true);
                 destinationAddressField.setEnabled(true);
+                ((NILayer) LAYER_MANAGER.getLayer("NI")).reset();
             } else {
                 byte[] srcByteAddr = new byte[6];
                 byte[] dstByteAddr = new byte[6];
@@ -210,8 +227,7 @@ public class UILayer extends BaseLayer {
                 ((EthernetLayer) LAYER_MANAGER.getLayer("Ethernet")).setSourceAddress(srcByteAddr);
                 ((EthernetLayer) LAYER_MANAGER.getLayer("Ethernet")).setDestinationAddress(dstByteAddr);
                 if (networkInterfaceComboBox.getSelectedItem() != null)
-                    ((NILayer) LAYER_MANAGER.getLayer("NI"))
-                            .setInterface(networkInterfaceComboBox.getSelectedItem().toString());
+                    ((NILayer) LAYER_MANAGER.getLayer("NI")).setInterface(networkInterfaceComboBox.getSelectedItem().toString());
 
                 settingButton.setText("Reset");
                 sourceAddressField.setEnabled(false);
@@ -228,6 +244,43 @@ public class UILayer extends BaseLayer {
         settingPanel.add(settingButton);
 
         return settingPanel;
+    }
+    
+    public void updateProgress(int value) {
+    	invokeLater(new Runnable() {
+    		@Override
+    		public void run() {
+    			fileProgressBar.setValue(value);
+    			System.out.println(value);
+    		}
+    	});
+    }
+    
+    public void unlockFileUI() {
+        fileSelectButton.setEnabled(true);
+        fileSendButton.setEnabled(true);
+    }
+
+    public JFileChooser openReceiveDialog(byte[] dataArray) {
+        fileSelectButton.setEnabled(false);
+        fileSendButton.setEnabled(false);
+
+        JFileChooser fileChooser = new JFileChooser(FileSystemView.getFileSystemView().getHomeDirectory());
+        fileChooser.setMultiSelectionEnabled(false);
+        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        fileChooser.setSelectedFile(new File(new String(dataArray)));
+
+        int fileChooserReturnValue = fileChooser.showSaveDialog(mainPanel);
+        if (fileChooserReturnValue == JFileChooser.APPROVE_OPTION) {
+            chatTextArea.append("[FILE] : " + new String(dataArray) + "\n");
+            filePathField.setText(new String(dataArray));
+            filePath = fileChooser.getSelectedFile().getAbsolutePath();
+        } else if (fileChooserReturnValue == JFileChooser.CANCEL_OPTION) {
+            fileSelectButton.setEnabled(true);
+            fileSendButton.setEnabled(true);
+            return null;
+        }
+        return fileChooser;
     }
 
     @Override
@@ -251,6 +304,7 @@ public class UILayer extends BaseLayer {
                 chatTextPaneVerticalScrollBar.setValue(chatTextPaneVerticalScrollBar.getMaximum());
                 break;
             case "FileApp":
+
                 break;
             default:
                 printError("undefined type");

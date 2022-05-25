@@ -1,3 +1,5 @@
+package datacomm;
+
 import org.jnetpcap.Pcap;
 import org.jnetpcap.PcapIf;
 import org.jnetpcap.packet.PcapPacketHandler;
@@ -16,10 +18,12 @@ public class NILayer extends BaseLayer {
 
             System.out.println("[NILayer] operating system : " + osName);
 
-            if (osName.contains("win")) jNetPcap = "jnetpcap.dll";
+            if (osName.contains("win"))
+                jNetPcap = "jnetpcap.dll";
             else if (osName.contains("nix") || osName.contains("nux") || osName.contains("aix"))
                 jNetPcap = "libjnetpcap.so";
-            else throw new RuntimeException("unsupported operating system");
+            else
+                throw new RuntimeException("unsupported operating system");
 
             // Native Library Load
             File jNetPcapFile = new File(jNetPcap);
@@ -36,10 +40,19 @@ public class NILayer extends BaseLayer {
     private final StringBuilder errorStringBuilder = new StringBuilder();
     private Pcap pcapObject = null;
     private PcapIf pcapInterface = null;
+    private Thread receiveThread = null;
 
     public NILayer(String layerName) {
         super(layerName);
         setInterfaceList();
+    }
+
+    public void reset() {
+        if (receiveThread != null)
+            if (receiveThread.isAlive()) {
+                receiveThread.interrupt();
+            }
+        receiveThread = null;
     }
 
     public ArrayList<PcapIf> getInterfaceList() {
@@ -48,7 +61,8 @@ public class NILayer extends BaseLayer {
 
     private PcapIf getInterface(String interfaceName) {
         for (PcapIf pcapIf : pcapInterfaceList)
-            if (pcapIf.getName().equals(interfaceName)) return pcapIf;
+            if (pcapIf.getName().equals(interfaceName))
+                return pcapIf;
         return null;
     }
 
@@ -75,7 +89,6 @@ public class NILayer extends BaseLayer {
             printError("cannot read network interface card\n" + errorStringBuilder);
     }
 
-
     public void setInterface(String interfaceName) {
         pcapInterface = getInterface(interfaceName);
         capturePacket();
@@ -83,14 +96,15 @@ public class NILayer extends BaseLayer {
     }
 
     private String parseMACAddress(byte[] byteMACAddress) {
-        if (byteMACAddress == null) return "";
+        if (byteMACAddress == null)
+            return "";
         StringBuilder stringBuilder = new StringBuilder();
         for (int index = 0; index < 6; index++) {
             // byte to HEX
             stringBuilder.append(String.format("%02X", byteMACAddress[index]));
-            if (index != 5) stringBuilder.append("-");
+            if (index != 5)
+                stringBuilder.append("-");
         }
-        print("parsed MAC address : " + stringBuilder);
         return stringBuilder.toString();
 
     }
@@ -104,25 +118,21 @@ public class NILayer extends BaseLayer {
 
     @Override
     public boolean send(byte[] dataArray, int dataLength) {
-        print("send : " + String.format("%s, %d", dataArray.toString(), dataLength));
-        printHex(dataArray, dataLength);
-
-        print("send data");
-
         ByteBuffer byteBuffer = ByteBuffer.wrap(dataArray);
         if (pcapObject.sendPacket(byteBuffer) != Pcap.OK) {
             printError(pcapObject.getErr());
             return false;
         }
-
-        print("data sent with size " + dataLength);
-
         return true;
     }
 
     @Override
     public boolean receive() {
-        new Thread(new ReceiveThread(pcapObject, getUpperLayer(0))).start();
+        if (receiveThread != null)
+            if (receiveThread.isAlive())
+                receiveThread.interrupt();
+        receiveThread = new Thread(new ReceiveThread(pcapObject, getUpperLayer(0)));
+        receiveThread.start();
         return false;
     }
 
@@ -142,11 +152,8 @@ public class NILayer extends BaseLayer {
             while (true) {
                 PcapPacketHandler<String> jPacketHandler = (packet, user) -> {
                     data = packet.getByteArray(0, packet.size());
-
-//                        print("received packet");
-//                        printHex(data, packet.size());
-
                     upperLayer.receive(data);
+//                    new Thread(() -> upperLayer.receive(data)).start();
                 };
                 pcapObject.loop(100000, jPacketHandler, "");
             }

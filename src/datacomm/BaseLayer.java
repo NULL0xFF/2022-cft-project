@@ -1,3 +1,5 @@
+package datacomm;
+
 import java.util.ArrayList;
 
 public abstract class BaseLayer implements LayerInterface {
@@ -84,6 +86,11 @@ public abstract class BaseLayer implements LayerInterface {
 
     @Override
     public boolean send(byte[] dataArray, int dataLength, String layerName) {
+        return false;
+    }
+
+    @Override
+    public boolean send(String filePath) {
         return false;
     }
 
