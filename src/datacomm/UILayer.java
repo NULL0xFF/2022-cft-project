@@ -275,7 +275,7 @@ public class UILayer extends BaseLayer {
         int fileChooserReturnValue = fileChooser.showSaveDialog(mainPanel);
         if (fileChooserReturnValue == JFileChooser.APPROVE_OPTION) {
             chatTextArea.append("[FILE] : Saving file as " + fileChooser.getName() + "\n");
-            filePathField.setText(new String(dataArray));
+            filePathField.setText(fileChooser.getName());
             filePath = fileChooser.getSelectedFile().getAbsolutePath();
         } else if (fileChooserReturnValue == JFileChooser.CANCEL_OPTION) {
             fileSelectButton.setEnabled(true);
