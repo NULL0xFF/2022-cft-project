@@ -50,6 +50,12 @@ public class EthernetLayer extends BaseLayer {
         header.src.addr = sourceAddress;
     }
 
+    private boolean isMyPacket(byte[] frame) {
+        for (int index = 0; index < 6; index++)
+            if (header.src.addr[index] != frame[index + 6]) return false;
+        return true;
+    }
+
     private boolean isBroadcast(byte[] frame) {
         for (int index = 0; index < 6; index++)
             if (frame[index] != (byte) 0xFF) return false;
@@ -114,7 +120,7 @@ public class EthernetLayer extends BaseLayer {
         byte[] dataArray;
         int dataType = byte2ToInteger(frame[12], frame[13]);
 
-        if (!isBroadcast(frame) && isMine(frame)) {
+        if (!isMyPacket(frame) && !isBroadcast(frame) && isMine(frame)) {
             dataArray = removeHeader(frame, frame.length);
             switch (dataType) {
                 case 0x2080:
