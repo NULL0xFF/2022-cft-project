@@ -212,6 +212,7 @@ public class UILayer extends BaseLayer {
                 sourceAddressField.setText("");
                 destinationAddressField.setText("");
                 settingButton.setText("Setting");
+                networkInterfaceComboBox.setEnabled(true);
                 sourceAddressField.setEnabled(true);
                 destinationAddressField.setEnabled(true);
                 ((NILayer) LAYER_MANAGER.getLayer("NI")).reset();
@@ -230,6 +231,7 @@ public class UILayer extends BaseLayer {
                     ((NILayer) LAYER_MANAGER.getLayer("NI")).setInterface(networkInterfaceComboBox.getSelectedItem().toString());
 
                 settingButton.setText("Reset");
+                networkInterfaceComboBox.setEnabled(false);
                 sourceAddressField.setEnabled(false);
                 destinationAddressField.setEnabled(false);
             }
@@ -245,17 +247,17 @@ public class UILayer extends BaseLayer {
 
         return settingPanel;
     }
-    
+
     public void updateProgress(int value) {
-    	invokeLater(new Runnable() {
-    		@Override
-    		public void run() {
-    			fileProgressBar.setValue(value);
-    			System.out.println(value);
-    		}
-    	});
+        invokeLater(new Runnable() {
+            @Override
+            public void run() {
+                fileProgressBar.setValue(value);
+                System.out.println(value);
+            }
+        });
     }
-    
+
     public void unlockFileUI() {
         fileSelectButton.setEnabled(true);
         fileSendButton.setEnabled(true);
@@ -272,7 +274,7 @@ public class UILayer extends BaseLayer {
 
         int fileChooserReturnValue = fileChooser.showSaveDialog(mainPanel);
         if (fileChooserReturnValue == JFileChooser.APPROVE_OPTION) {
-            chatTextArea.append("[FILE] : " + new String(dataArray) + "\n");
+            chatTextArea.append("[FILE] : Saving file as " + fileChooser.getName() + "\n");
             filePathField.setText(new String(dataArray));
             filePath = fileChooser.getSelectedFile().getAbsolutePath();
         } else if (fileChooserReturnValue == JFileChooser.CANCEL_OPTION) {
@@ -297,14 +299,15 @@ public class UILayer extends BaseLayer {
         print("receive : " + String.format("%s from %s", dataArray.toString(), layerName));
         printHex(dataArray, dataArray.length);
 
+        JScrollBar chatTextPaneVerticalScrollBar = chatTextPane.getVerticalScrollBar();
         switch (layerName) {
             case "ChatApp":
                 chatTextArea.append("[RECV] : " + new String(dataArray) + "\n");
-                JScrollBar chatTextPaneVerticalScrollBar = chatTextPane.getVerticalScrollBar();
                 chatTextPaneVerticalScrollBar.setValue(chatTextPaneVerticalScrollBar.getMaximum());
                 break;
             case "FileApp":
-
+                chatTextArea.append("[FILE] : " + new String(dataArray) + "\n");
+                chatTextPaneVerticalScrollBar.setValue(chatTextPaneVerticalScrollBar.getMaximum());
                 break;
             default:
                 printError("undefined type");

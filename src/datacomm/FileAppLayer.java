@@ -244,13 +244,16 @@ public class FileAppLayer extends BaseLayer {
         if (this.waitResponse()) { // Wait for Acceptance
             // Send File
             header.messageType = 0x01;
+            getUpperLayer(0).receive("Starting file transfer".getBytes(), "FileApp");
             print("starting file transfer");
             send(fileBuffer, fileBuffer.length);
+            getUpperLayer(0).receive("File transfer done!".getBytes(), "FileApp");
             print("file transfer done!");
             return true;
         }
 
         // File Transfer Cancelled
+        getUpperLayer(0).receive("File transfer cancelled.".getBytes(), "FileApp");
         printError("file transfer cancelled");
         // TODO Manipulate UI Layer As File Trasnfer Cancelled
 
@@ -278,6 +281,7 @@ public class FileAppLayer extends BaseLayer {
             case 0x01:
                 // File Data
                 dataArray = removeHeader(frame, frame.length);
+                UILayer upperLayer = (UILayer) getUpperLayer(0);
                 switch (fragType) {
                     case 0x00:
                         // Unfragmented Data
@@ -286,8 +290,10 @@ public class FileAppLayer extends BaseLayer {
                             sendResponse(dataArray);
                         } else {
                             // File Data
+                            upperLayer.updateProgress(100);
                             saveFile(dataArray);
-                            ((UILayer) getUpperLayer(0)).unlockFileUI();
+                            upperLayer.receive("File Received".getBytes(), "FileApp");
+                            upperLayer.unlockFileUI();
                         }
                         break;
                     case 0x01:
@@ -317,9 +323,10 @@ public class FileAppLayer extends BaseLayer {
                             sendResponse(fragBytes);
                         } else {
                             // File Data
-                            ((UILayer) getUpperLayer(0)).updateProgress((int) Math.ceil(seqNum / Math.ceil(fragBytes.length / (double) MTU) * 100));
+                            upperLayer.updateProgress((int) Math.ceil(seqNum / Math.ceil(fragBytes.length / (double) MTU) * 100));
                             saveFile(fragBytes);
-                            ((UILayer) getUpperLayer(0)).unlockFileUI();
+                            upperLayer.receive("File Received".getBytes(), "FileApp");
+                            upperLayer.unlockFileUI();
                         }
                         break;
                     default:
